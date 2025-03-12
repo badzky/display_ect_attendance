@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Attendance Records</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+            background-color: #f4f4f4;
+        }
+        h2 {
+            color: #333;
+        }
+        .container {
+            width: 90%;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+            cursor: pointer;
+        }
+        th {
+            background-color: #004080;
+            color: white;
+            text-transform: uppercase;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+        .btn {
+            background: #004080;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+            border-radius: 5px;
+            transition: 0.3s;
+        }
+        .btn:hover {
+            background: #00264d;
+        }
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #004080;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            display: none;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #emptyMessage {
+            display: none;
+            color: red;
+            font-size: 18px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Student Attendance Records</h2>
+
+        <button class="btn" onclick="downloadCSV()">Download CSV</button>
+        <button class="btn" onclick="downloadPDF()">Download PDF</button>
+
+        <div class="loader" id="loading"></div>
+        <p id="emptyMessage">No attendance records found.</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Student Number</th>
+                    <th>Last Name</th>
+                    <th>First Name</th>
+                    <th>Course</th>
+                    <th>Login Time</th>
+                    <th>Device ID</th>
+                    <th>Barangay</th>
+                    <th>City</th>
+                    <th onclick="sortTable()">Timestamp &#x25B2;&#x25BC;</th>
+                </tr>
+            </thead>
+            <tbody id="attendanceTable"></tbody>
+        </table>
+    </div>
+
+    <script type="module">
+        import { db, collection, getDocs } from "./firebase.js";
+        let attendanceData = [];
+        let ascendingOrder = true;
+
+        async function fetchAttendanceRecords() {
+            const tableBody = document.getElementById("attendanceTable");
+            const loader = document.getElementById("loading");
+            const emptyMessage = document.getElementById("emptyMessage");
+            tableBody.innerHTML = "";
+            loader.style.display = "block";
+            emptyMessage.style.display = "none";
+            attendanceData = [];
+
+            try {
+                const querySnapshot = await getDocs(collection(db, "student_attendance"));
+                
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    attendanceData.push({
+                        ...data,
+                        timestamp: data.timestamp ? data.timestamp.toDate() : null
+                    });
+                });
+                
+                if (attendanceData.length === 0) {
+                    emptyMessage.style.display = "block";
+                }
+                
+                renderTable();
+            } catch (error) {
+                console.error("Error fetching attendance records:", error);
+                alert("Failed to fetch records. Check the console for details.");
+            } finally {
+                loader.style.display = "none";
+            }
+        }
+
+        function renderTable() {
+            const tableBody = document.getElementById("attendanceTable");
+            tableBody.innerHTML = "";
+            attendanceData.forEach(data => {
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                    <td>${data.studentNumber}</td>
+                    <td>${data.lastName}</td>
+                    <td>${data.firstName}</td>
+                    <td>${data.course}</td>
+                    <td>${data.selectedTime}</td>
+                    <td>${data.deviceID}</td>
+                    <td>${data.barangay}</td>
+                    <td>${data.city}</td>
+                    <td>${data.timestamp ? data.timestamp.toLocaleString() : "N/A"}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        window.downloadCSV = function () {
+    if (attendanceData.length === 0) {
+        alert("No data available to download.");
+        return;
+    }
+
+    let csvContent = "Student Number,Last Name,First Name,Course,Login Time,Device ID,Barangay,City,Timestamp\n";
+
+    attendanceData.forEach(data => {
+        csvContent += `"${data.studentNumber}","${data.lastName}","${data.firstName}","${data.course}","${data.selectedTime}","${data.deviceID}","${data.barangay}","${data.city}","${data.timestamp ? data.timestamp.toLocaleString() : "N/A"}"\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute("download", "attendance_records.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
+
+window.downloadPDF = function () {
+    if (attendanceData.length === 0) {
+        alert("No data available to download.");
+        return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    doc.text("Student Attendance Records", 10, 10);
+    let y = 20;
+
+    attendanceData.forEach(data => {
+        doc.text(
+            `${data.studentNumber} | ${data.lastName}, ${data.firstName} | ${data.course} | ${data.selectedTime} | ${data.deviceID} | ${data.barangay} | ${data.city} | ${data.timestamp ? data.timestamp.toLocaleString() : "N/A"}`,
+            10, y
+        );
+        y += 10;
+    });
+
+    doc.save("attendance_records.pdf");
+};
+
+
+        fetchAttendanceRecords();
+    </script>
+</body>
+</html>
