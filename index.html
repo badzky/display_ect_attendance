@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Student Attendance Records</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -60,37 +59,14 @@
         .btn:hover {
             background: #00264d;
         }
-        .loader {
-            border: 5px solid #f3f3f3;
-            border-top: 5px solid #004080;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            display: none;
-            margin: 20px auto;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        #emptyMessage {
-            display: none;
-            color: red;
-            font-size: 18px;
-            margin-top: 20px;
-        }
     </style>
 </head>
 <body>
     <div class="container">
         <h2>Student Attendance Records</h2>
 
+        <input type="text" id="searchBar" placeholder="Search by Student Number" onkeyup="searchStudent()">
         <button class="btn" onclick="downloadCSV()">Download CSV</button>
-        <button class="btn" onclick="downloadPDF()">Download PDF</button>
-
-        <div class="loader" id="loading"></div>
-        <p id="emptyMessage">No attendance records found.</p>
 
         <table>
             <thead>
@@ -111,17 +87,13 @@
     </div>
 
     <script type="module">
-        import { db, collection, getDocs } from "./firebase.js";
+        import { db, collection, getDocs } from "firebase.js";
         let attendanceData = [];
         let ascendingOrder = true;
 
         async function fetchAttendanceRecords() {
             const tableBody = document.getElementById("attendanceTable");
-            const loader = document.getElementById("loading");
-            const emptyMessage = document.getElementById("emptyMessage");
             tableBody.innerHTML = "";
-            loader.style.display = "block";
-            emptyMessage.style.display = "none";
             attendanceData = [];
 
             try {
@@ -135,23 +107,17 @@
                     });
                 });
                 
-                if (attendanceData.length === 0) {
-                    emptyMessage.style.display = "block";
-                }
-                
                 renderTable();
             } catch (error) {
                 console.error("Error fetching attendance records:", error);
                 alert("Failed to fetch records. Check the console for details.");
-            } finally {
-                loader.style.display = "none";
             }
         }
 
-        function renderTable() {
+        function renderTable(filteredData = attendanceData) {
             const tableBody = document.getElementById("attendanceTable");
             tableBody.innerHTML = "";
-            attendanceData.forEach(data => {
+            filteredData.forEach(data => {
                 const row = document.createElement("tr");
                 row.innerHTML = `
                     <td>${data.studentNumber}</td>
@@ -168,50 +134,35 @@
             });
         }
 
+        window.sortTable = function () {
+            ascendingOrder = !ascendingOrder;
+            attendanceData.sort((a, b) => {
+                if (!a.timestamp || !b.timestamp) return 0;
+                return ascendingOrder ? a.timestamp - b.timestamp : b.timestamp - a.timestamp;
+            });
+            renderTable();
+        };
+
+        window.searchStudent = function () {
+            const searchValue = document.getElementById("searchBar").value.toLowerCase();
+            const filteredData = attendanceData.filter(data => data.studentNumber.toLowerCase().includes(searchValue));
+            renderTable(filteredData);
+        };
+
         window.downloadCSV = function () {
-    if (attendanceData.length === 0) {
-        alert("No data available to download.");
-        return;
-    }
-
-    let csvContent = "Student Number,Last Name,First Name,Course,Login Time,Device ID,Barangay,City,Timestamp\n";
-
-    attendanceData.forEach(data => {
-        csvContent += `"${data.studentNumber}","${data.lastName}","${data.firstName}","${data.course}","${data.selectedTime}","${data.deviceID}","${data.barangay}","${data.city}","${data.timestamp ? data.timestamp.toLocaleString() : "N/A"}"\n`;
-    });
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute("download", "attendance_records.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-};
-
-window.downloadPDF = function () {
-    if (attendanceData.length === 0) {
-        alert("No data available to download.");
-        return;
-    }
-
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-
-    doc.text("Student Attendance Records", 10, 10);
-    let y = 20;
-
-    attendanceData.forEach(data => {
-        doc.text(
-            `${data.studentNumber} | ${data.lastName}, ${data.firstName} | ${data.course} | ${data.selectedTime} | ${data.deviceID} | ${data.barangay} | ${data.city} | ${data.timestamp ? data.timestamp.toLocaleString() : "N/A"}`,
-            10, y
-        );
-        y += 10;
-    });
-
-    doc.save("attendance_records.pdf");
-};
-
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Student Number,Last Name,First Name,Course,Login Time,Device ID,Barangay,City,Timestamp\n";
+            attendanceData.forEach(data => {
+                csvContent += `${data.studentNumber},${data.lastName},${data.firstName},${data.course},${data.selectedTime},${data.deviceID},${data.barangay},${data.city},${data.timestamp ? data.timestamp.toLocaleString() : "N/A"}\n`;
+            });
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "attendance_records.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
 
         fetchAttendanceRecords();
     </script>
